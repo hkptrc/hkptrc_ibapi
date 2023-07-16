@@ -2,6 +2,7 @@ from ibapi.wrapper import EWrapper as Wrapper_HKPTRC
 from ibapi.client import EClient as Client_HKPTRC
 from threading import Thread
 import queue
+import time
 
 ended = object()
 
@@ -22,6 +23,7 @@ class HKPTRC_Wrapper(Wrapper_HKPTRC):
     def contractDetails(self, tickerid, contractdetails):
         self.hkptrccontractdedict[tickerid] = queue.Queue()
         self.hkptrccontractdedict[tickerid].put(contractdetails)
+
 
 class HKPTRC_Client(Client_HKPTRC):
     def __init__(self, wrapper):
@@ -46,11 +48,19 @@ class HKPTRC_Client(Client_HKPTRC):
         if ibcontract.secType == 'FUT': ibcontract = self.resolve(ibcontract)
         self.reqMktData(tickerid, ibcontract, '', False, False, [])
 
+    def get_positions(self):
+        self.position_data = queue.Queue()
+        self.reqPositions()
+
+    def get_order_id(self):
+        self.reqIds(-1)
+        time.sleep(2)
+
 class contentqueue(object):
     def __init__(self, _queue):
         self._queue = _queue
 
-    def get(self,timeout=5):
+    def get(self, timeout=5):
         contents = []
         finished = False
         while not finished:
@@ -66,21 +76,27 @@ class hkptrc_ibApp(HKPTRC_Wrapper, HKPTRC_Client):
         HKPTRC_Client.__init__(self, wrapper=self)
         self.tick_data = queue.Queue()
         self.connect(ipaddress, portid, clientid)
+        self.nextorderId = None
         thread = Thread(target=self.run)
         thread.start()
+        time.sleep(2)
+
+    def nextValidId(self, orderId: int):
+        super().nextValidId(orderId)
+        self.nextorderId = orderId
 
     def tickPrice(self, tickerid, tickType, price, attrib):
-        tick_dict = {tickerid:{}}
-        if   tickType == 1: tick_dict[tickerid]['bid_price'] = price
+        tick_dict = {tickerid: {}}
+        if tickType == 1: tick_dict[tickerid]['bid_price'] = price
         elif tickType == 2: tick_dict[tickerid]['ask_price'] = price
         elif tickType == 4: tick_dict[tickerid]['last_price'] = price
         elif tickType == 6: tick_dict[tickerid]['day_high'] = price
         elif tickType == 7: tick_dict[tickerid]['day_low'] = price
-        if tickType in [1,2,4,6,7]: self.tick_data.put(tick_dict)
+        if tickType in [1, 2, 4, 6, 7]: self.tick_data.put(tick_dict)
 
     def tickSize(self, tickerid, tickType, size):
         tick_dict = {tickerid: {}}
-        if   tickType == 0: tick_dict[tickerid]['bid_size'] = size
+        if tickType == 0: tick_dict[tickerid]['bid_size'] = size
         elif tickType == 3: tick_dict[tickerid]['ask_size'] = size
         elif tickType == 5: tick_dict[tickerid]['last_size'] = size
         if tickType in [0, 3, 5]: self.tick_data.put(tick_dict)
@@ -89,3 +105,6 @@ class hkptrc_ibApp(HKPTRC_Wrapper, HKPTRC_Client):
         tick_dict = {tickerid: {}}
         if tickType == 24: tick_dict[tickerid]['implied_vol'] = value
         if tickType in [24]: self.tick_data.put(tick_dict)
+
+    def position(self, account, contract, pos, avgCost):
+        self.position_data.put({'code':contract.symbol, 'pos':int(pos), 'avg cost':avgCost})
