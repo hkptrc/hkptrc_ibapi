@@ -22,6 +22,10 @@ if __name__ == '__main__':
     iborder.orderId = app.nextorderId                       # Use the next valid order id
     app.nextorderId += 1                                    # Increment id by 1 for the next use
 
+    # For ERROR 1 10268 The 'EtradeOnly' order attribute is not supported.
+    iborder.eTradeOnly = False
+    iborder.firmQuoteOnly = False
+
     app.placeOrder(iborder.orderId, ibcontract, iborder)    # Place the order
 
     time.sleep(5)                                           # Give some time for the operation
